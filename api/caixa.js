@@ -18,6 +18,7 @@ module.exports = async (req, res) => {
 	try {
 		const searchData = await searchCaixaIds(state);
 		if (!searchData) {
+			console.error("[caixa] searchCaixaIds returned null for state:", state);
 			return res
 				.status(503)
 				.json({ error: "Nenhum dado disponível para este estado" });

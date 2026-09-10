@@ -45,7 +45,9 @@ async function caixaGetSession() {
 				method: "GET",
 				headers: {
 					"User-Agent": CAIXA_HEADERS["User-Agent"],
-					Accept: "text/html,application/xhtml+xml",
+					Accept:
+						"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+					"Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
 				},
 				timeout: 15000,
 			},
@@ -56,7 +58,12 @@ async function caixaGetSession() {
 					const cookies = (res.headers["set-cookie"] || [])
 						.map((c) => c.split(";")[0])
 						.join("; ");
-					resolve({ status: res.statusCode, body: data, cookies });
+					resolve({
+						status: res.statusCode,
+						body: data,
+						cookies,
+						allHeaders: res.headers,
+					});
 				});
 			},
 		);
@@ -73,12 +80,20 @@ async function caixaPost(url, body, cookies = "") {
 	const https = require("https");
 	return new Promise((resolve, reject) => {
 		const parsed = new URL(url);
-		const headers = { ...CAIXA_HEADERS };
+		const headers = {
+			"Content-Type": "application/x-www-form-urlencoded",
+			"User-Agent": CAIXA_HEADERS["User-Agent"],
+			Accept:
+				"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+			"Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+			Origin: "https://venda-imoveis.caixa.gov.br",
+			Referer: "https://venda-imoveis.caixa.gov.br/sistema/busca-imovel.asp",
+		};
 		if (cookies) headers["Cookie"] = cookies;
 		const req = https.request(
 			{
 				hostname: parsed.hostname,
-				path: parsed.pathname,
+				path: parsed.pathname + parsed.search,
 				method: "POST",
 				headers,
 				timeout: 15000,
@@ -129,13 +144,19 @@ async function searchCaixaIds(state) {
 	}).toString();
 
 	const session = await caixaGetSession();
+	console.log("[caixa] session status:", session.status, "cookies:", session.cookies ? "present" : "none");
+
 	const r = await caixaPost(
 		"https://venda-imoveis.caixa.gov.br/sistema/carregaPesquisaImoveis.asp",
 		searchBody,
 		session.cookies,
 	);
 
-	if (r.status !== 200) return null;
+	console.log("[caixa] search status:", r.status, "body length:", r.body.length);
+	if (r.status !== 200) {
+		console.error("[caixa] search failed:", r.body.substring(0, 500));
+		return null;
+	}
 
 	const html = r.body;
 	const totalPagMatch = /hdnQtdPag'\)\.val\((\d+)\)/.exec(html);
