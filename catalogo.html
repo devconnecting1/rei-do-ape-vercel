@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Catálogo de Imóveis — Rei do Apê</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link href="https://cdn.jsdelivr.net/npm/geist@latest/dist/fonts/geist-sans/style.css" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Geist',sans-serif;background:#f5f5f5;color:#1a1a1a}
+
+.header{height:50px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid #e0e0e0;background:#fff;flex-shrink:0}
+.header .logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:#1a3c6e;text-decoration:none}
+.header .logo svg{width:28px;height:28px}
+.header-actions{display:flex;align-items:center;gap:12px}
+.header-actions a{font-size:14px;color:#555;text-decoration:none;transition:color .15s}
+.header-actions a:hover{color:#1a3c6e}
+
+.search-bar{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid #e0e0e0;background:#fff;flex-shrink:0}
+.search-bar input{flex:1;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 14px;font-size:14px;outline:none;transition:border-color .15s}
+.search-bar input:focus{border-color:#1a3c6e}
+.search-bar select{height:38px;border:1px solid #ddd;border-radius:8px;padding:0 12px;font-size:13px;background:#fff;cursor:pointer;outline:none}
+.search-bar .filter-group{display:flex;gap:8px}
+.search-bar .filter-group select{min-width:110px}
+
+.source-tabs{display:flex;gap:0;padding:0 16px;background:#fff;border-bottom:1px solid #e0e0e0;flex-shrink:0}
+.source-tab{padding:11px 18px;border:none;background:none;font-size:13px;font-weight:600;color:#888;cursor:pointer;display:flex;align-items:center;gap:6px;border-bottom:2px solid transparent;transition:all .15s}
+.source-tab:hover{color:#1a1a1a}
+.source-tab.active{color:#1a3c6e;border-bottom-color:#1a3c6e}
+.source-tab svg{opacity:.5}
+.source-tab.active svg{opacity:1}
+.subcat-btn{padding:4px 12px;border:1px solid #d4d4d4;border-radius:16px;background:#fff;color:#555;font-size:12px;cursor:pointer;transition:all .15s}
+.subcat-btn:hover{border-color:#1a3c6e;color:#1a3c6e}
+.subcat-btn.active{background:#1a3c6e;color:#fff;border-color:#1a3c6e}
+
+.app-body{display:flex;flex:1;overflow:hidden;height:calc(100dvh - 50px - 49px - 46px)}
+
+.list-panel{display:flex;flex-direction:column;flex:1;overflow:hidden;min-width:0}
+.scroll-content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.results-info{padding:10px 16px;font-size:13px;color:#666;border-bottom:1px solid #eee;background:#fff;position:sticky;top:0;z-index:5}
+.results-info strong{color:#1a1a1a}
+.cards-container{display:grid;gap:12px;padding:12px}
+
+.map-panel{width:420px;flex-shrink:0;border-left:1px solid #e0e0e0;position:relative;overflow:hidden}
+#map{width:100%;height:100%}
+.app-body.no-map .map-panel{display:none}
+
+.pagination{display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 16px;border-top:1px solid #ddd;background:#fff;flex-shrink:0;min-height:50px}
+.pagination button{height:34px;padding:0 14px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.pagination button:hover:not(:disabled){border-color:#1a3c6e;color:#1a3c6e}
+.pagination button:disabled{opacity:.4;cursor:default}
+.pagination button.active{background:#1a3c6e;color:#fff;border-color:#1a3c6e}
+.pagination .page-info{font-size:13px;color:#666}
+
+/* Tablet: 768px–1100px */
+@media(min-width:769px) and (max-width:1100px){
+  .header{height:48px}
+  .cards-container{grid-template-columns:1fr !important}
+  .map-panel{display:none}
+  .card-img{width:150px;min-width:150px}
+  .skeleton-img{min-width:100px}
+}
+
+/* Mobile: <768px */
+@media(max-width:768px){
+  .header{height:44px;padding:0 12px}
+  .header .logo{font-size:16px}
+  .header .logo svg{width:24px;height:24px}
+  .header-actions a{font-size:13px}
+
+  .search-bar{padding:8px 12px;flex-direction:column;gap:6px}
+  .search-bar input{height:36px;font-size:13px;width:100%}
+  .search-bar .filter-group{width:100%;gap:6px}
+  .search-bar .filter-group select{flex:1;min-width:0;height:34px;font-size:12px}
+
+  .source-tabs{padding:0 8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .source-tabs::-webkit-scrollbar{display:none}
+  .source-tab{padding:10px 12px;font-size:12px;white-space:nowrap;flex-shrink:0}
+  .source-tab svg{width:14px;height:14px}
+
+  #subcategories>div{max-height:40px;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:4px;padding-bottom:2px}
+  #subcategories>div::-webkit-scrollbar{display:none}
+  .subcat-btn{font-size:11px;padding:3px 10px;flex-shrink:0;white-space:nowrap}
+
+  .app-body{height:calc(100dvh - 44px - 46px - 42px)}
+  .cards-container{grid-template-columns:1fr !important;padding:8px;gap:10px}
+  .results-info{padding:8px 12px;font-size:12px}
+
+  .card{flex-direction:column;min-height:auto;border-radius:10px}
+  .card-img{width:100%;min-width:100%;height:180px}
+  .card-body{padding:10px 12px}
+  .card-name{font-size:14px}
+  .card-developer{font-size:10px}
+  .card-price .value{font-size:15px}
+  .card-specs{gap:8px}
+
+  .skeleton-card{flex-direction:column;height:auto}
+  .skeleton-img{width:100%;min-width:100%;height:180px}
+  .skeleton-body{padding:12px}
+
+  .pagination{padding:8px 12px;gap:4px;flex-wrap:wrap}
+  .pagination button{height:30px;padding:0 8px;font-size:11px}
+}
+
+.card{background:#fff;border-radius:8px;overflow:hidden;display:flex;flex-direction:row;box-shadow:0 1px 3px rgba(0,0,0,.08);cursor:pointer;transition:box-shadow .15s,transform .1s;min-height:200px}
+.card:hover{box-shadow:0 4px 16px rgba(0,0,0,.12);transform:translateY(-1px)}
+.card-img{width:180px;min-width:180px;position:relative;overflow:hidden;flex-shrink:0}
+.card-img img{width:100%;height:100%;object-fit:cover;transition:transform .2s}
+.card:hover .card-img img{transform:scale(1.03)}
+.card-img .badge{position:absolute;top:8px;left:8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;padding:3px 8px;border-radius:4px;background:rgba(26,60,110,.85);color:#fff;backdrop-filter:blur(4px)}
+.card-img .badge-launch{background:rgba(34,139,34,.85)}
+.card-img .badge-opportunity{background:rgba(204,120,0,.85)}
+.card-img .img-count{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;font-size:11px;padding:2px 8px;border-radius:4px}
+
+.card-body{flex:1;padding:12px 14px;display:flex;flex-direction:column;gap:4px;min-width:0;justify-content:center}
+.card-name{font-size:14px;font-weight:700;line-height:1.3;color:#1a1a1a;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card-address{font-size:11px;color:#888;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.card-developer{font-size:11px;color:#1a3c6e;font-weight:600;margin-top:1px}
+.card-divider{height:1px;background:#eee;margin:3px 0}
+.card-price{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.card-price .value{font-size:16px;font-weight:700;color:#1a1a1a;letter-spacing:-.02em}
+.card-specs{display:flex;gap:10px;font-size:11px;color:#555}
+.card-specs .spec{display:flex;align-items:center;gap:3px}
+.card-specs .spec svg{width:13px;height:13px;color:#999}
+.card-features{display:flex;gap:4px;flex-wrap:wrap;margin-top:auto}
+.card-features .feat{font-size:10px;color:#888;background:#f5f5f5;padding:2px 6px;border-radius:4px}
+
+.loading-overlay{position:fixed;inset:0;background:rgba(255,255,255,.8);display:flex;align-items:center;justify-content:center;z-index:100}
+.spinner{width:36px;height:36px;border:3px solid #e0e0e0;border-top-color:#1a3c6e;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.skeleton-card{background:#fff;border-radius:8px;overflow:hidden;display:flex;flex-direction:row;height:200px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.skeleton-img{width:40%;min-width:120px;background:linear-gradient(90deg,#eee 25%,#f5f5f5 50%,#eee 75%);background-size:200% 100%;animation:shimmer 1.5s infinite}
+.skeleton-body{flex:1;padding:12px 14px;display:flex;flex-direction:column;gap:10px;justify-content:center}
+.skeleton-line{height:12px;background:linear-gradient(90deg,#eee 25%,#f5f5f5 50%,#eee 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:4px}
+.skeleton-line.w75{width:75%}
+.skeleton-line.w50{width:50%}
+.skeleton-line.w33{width:33%}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="index.html" class="logo">
+    <svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#1a3c6e"/><path d="M8 14h4v10H8zM14 10h4v14h-4zM20 6h4v18h-4z" fill="#C9A227"/></svg>
+    REI DO APÊ
+  </a>
+  <div class="header-actions">
+    <a href="index.html">Voltar ao Site</a>
+  </div>
+</div>
+
+<div class="search-bar">
+  <input type="text" id="search-input" placeholder="Buscar por nome, bairro ou cidade...">
+  <div class="filter-group">
+    <select id="filter-state"><option value="">Todos os estados</option></select>
+    <select id="filter-bedrooms">
+      <option value="">Qualquer dorm.</option>
+      <option value="1">1 dorm.</option>
+      <option value="2">2 dorm.</option>
+      <option value="3">3 dorm.</option>
+      <option value="4">4+ dorm.</option>
+    </select>
+  </div>
+</div>
+
+<div class="source-tabs" id="source-tabs">
+  <button class="source-tab active" data-source="orulo">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+    Orulo
+  </button>
+  <button class="source-tab" data-source="caixa">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>
+    Caixa Econômica
+  </button>
+  <button class="source-tab" data-source="superbid">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    Superbid
+  </button>
+</div>
+
+<div class="subcategories" id="subcategories" style="display:none;padding:0 24px 12px;background:#f7f7f5;border-bottom:1px solid #e5e5e5">
+  <div style="display:flex;gap:6px;flex-wrap:wrap;max-height:90px;overflow-y:auto">
+    <button class="subcat-btn active" data-category="imoveis">Imóveis</button>
+    <button class="subcat-btn" data-category="carros">Carros & Motos</button>
+    <button class="subcat-btn" data-category="caminhoes">Caminhões & Ônibus</button>
+    <button class="subcat-btn" data-category="maquinas-agricolas">Máquinas Pesadas & Agrícolas</button>
+    <button class="subcat-btn" data-category="transporte">Movimentação & Transporte</button>
+    <button class="subcat-btn" data-category="industrial">Industrial, Máquinas & Equipamentos</button>
+    <button class="subcat-btn" data-category="animais">Animais</button>
+    <button class="subcat-btn" data-category="tecnologia">Tecnologia</button>
+    <button class="subcat-btn" data-category="moveis">Móveis e Decoração</button>
+    <button class="subcat-btn" data-category="joias">Bolsas, Canetas, Joias e Relógios</button>
+    <button class="subcat-btn" data-category="sucatas">Sucatas, Materiais & Resíduos</button>
+  </div>
+</div>
+
+<div class="app-body" id="app-body">
+  <div class="list-panel" id="list-panel">
+    <div class="scroll-content" id="scroll-content">
+      <div class="results-info" id="results-info">Carregando...</div>
+      <div class="cards-container" id="cards-container"></div>
+    </div>
+    <div class="pagination" id="pagination"></div>
+  </div>
+  <div class="map-panel">
+    <div id="map"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var currentPage = 1;
+  var perPage = 10;
+  var totalPages = 1;
+  var searchTimer = null;
+  var currentSource = 'orulo';
+  var currentCategory = 'imoveis';
+  var currentRequestId = 0;
+
+  var statesList = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+  var stateSelect = document.getElementById('filter-state');
+  statesList.forEach(function(s){
+    var opt = document.createElement('option');
+    opt.value = s; opt.textContent = s;
+    stateSelect.appendChild(opt);
+  });
+
+  document.querySelectorAll('.source-tab').forEach(function(tab){
+    tab.addEventListener('click', function(){
+      document.querySelectorAll('.source-tab').forEach(function(t){ t.classList.remove('active'); });
+      tab.classList.add('active');
+      currentSource = tab.dataset.source;
+      currentPage = 1;
+      var body = document.getElementById('app-body');
+      var subcats = document.getElementById('subcategories');
+      if (currentSource === 'orulo') { body.classList.remove('no-map'); loadMapMarkers(); subcats.style.display = 'none'; }
+      else if (currentSource === 'superbid') { body.classList.add('no-map'); markers.clearLayers(); subcats.style.display = 'block'; currentCategory = 'imoveis'; document.querySelectorAll('.subcat-btn').forEach(function(b){ b.classList.toggle('active', b.dataset.category === 'imoveis'); }); }
+      else { body.classList.add('no-map'); markers.clearLayers(); subcats.style.display = 'none'; }
+      showSkeletons();
+      loadBuildings();
+    });
+  });
+
+  document.querySelectorAll('.subcat-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.subcat-btn').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      currentCategory = btn.dataset.category;
+      currentPage = 1;
+      showSkeletons();
+      loadBuildings();
+    });
+  });
+
+  document.getElementById('search-input').addEventListener('input', function(){
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function(){ currentPage = 1; loadBuildings(); if (currentSource === 'orulo') loadMapMarkers(); }, 400);
+  });
+  document.getElementById('filter-state').addEventListener('change', function(){ currentPage = 1; loadBuildings(); if (currentSource === 'orulo') loadMapMarkers(); });
+  document.getElementById('filter-bedrooms').addEventListener('change', function(){ currentPage = 1; loadBuildings(); if (currentSource === 'orulo') loadMapMarkers(); });
+
+  var map = L.map('map',{zoomControl:false}).setView([-15.78,-47.93],4);
+  L.control.zoom({position:'topright'}).addTo(map);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap',maxZoom:19}).addTo(map);
+  var markers = L.featureGroup().addTo(map);
+  var markerIcon = L.divIcon({className:'',iconSize:[28,40],iconAnchor:[14,40],popupAnchor:[0,-36],html:'<svg width="28" height="40" viewBox="0 0 28 40" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 0C6.268 0 0 6.268 0 14c0 10.5 14 26 14 26s14-15.5 14-26C28 6.268 21.732 0 14 0z" fill="#1a3c6e"/><circle cx="14" cy="14" r="6" fill="#fff"/></svg>'});
+
+  var mapLoading = document.createElement('div');
+  mapLoading.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(255,255,255,.9);padding:12px 20px;border-radius:8px;font-size:13px;color:#666;z-index:1000;display:none;box-shadow:0 2px 8px rgba(0,0,0,.1)';
+  mapLoading.textContent = 'Carregando mapa...';
+  document.getElementById('map').appendChild(mapLoading);
+
+  showSkeletons();
+  loadBuildings();
+  loadMapMarkers();
+
+  function loadMapMarkers(){
+    mapLoading.style.display = 'block';
+    var st = document.getElementById('filter-state').value;
+    var br = document.getElementById('filter-bedrooms').value;
+    var q = document.getElementById('search-input').value.trim();
+    var params = new URLSearchParams();
+    params.set('total_pages', '10');
+    if (st) params.set('state', st);
+    if (br) params.set('bedrooms', br);
+    if (q) params.set('q', q);
+    var reqId = currentRequestId;
+    fetch('api/orulo-map?' + params.toString())
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (reqId !== currentRequestId) return;
+        mapLoading.style.display = 'none';
+        markers.clearLayers();
+        (data.markers || []).forEach(function(m){
+          var marker = L.marker([m.lat, m.lng], {icon: markerIcon});
+          var popup = '<div style="min-width:180px"><strong>' + esc(m.name) + '</strong><br>R$ ' + Number(m.price).toLocaleString('pt-BR',{maximumFractionDigits:0}) + '<br><a href="detalhe.html?id=' + m.id + '" style="color:#1a3c6e;font-weight:600">Ver detalhes &rarr;</a></div>';
+          marker.bindPopup(popup);
+          markers.addLayer(marker);
+        });
+        try { if (markers.getLayers().length) map.fitBounds(markers.getBounds().pad(0.1)); } catch(e) {}
+      })
+      .catch(function(){ mapLoading.style.display = 'none'; });
+  }
+
+  function loadBuildings(){
+    currentRequestId++;
+    var reqId = currentRequestId;
+    var container = document.getElementById('cards-container');
+    var st = document.getElementById('filter-state').value;
+    var br = document.getElementById('filter-bedrooms').value;
+    var q = document.getElementById('search-input').value.trim();
+
+    if (currentSource === 'caixa') {
+      var params = new URLSearchParams();
+      params.set('page', currentPage);
+      if (st) params.set('state', st);
+      if (br) params.set('bedrooms', br);
+      fetch('api/caixa?' + params.toString())
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          if (reqId !== currentRequestId) return;
+          if (data.error) { document.getElementById('results-info').textContent = 'Erro: ' + data.error; return; }
+          var items = data.items || [];
+          var total = data.total || items.length;
+          totalPages = data.totalPages || Math.ceil(total / perPage);
+          document.getElementById('results-info').innerHTML = '<strong>' + total.toLocaleString('pt-BR') + '</strong> imóveis Caixa encontrados' + (data.page > 1 ? ' (página ' + data.page + ' de ' + totalPages + ')' : '');
+          renderCaixaCards(items);
+          renderPagination();
+        })
+        .catch(function(e){ if (reqId !== currentRequestId) return; document.getElementById('results-info').textContent = 'Erro: ' + e.message; });
+      return;
+    }
+
+    if (currentSource === 'superbid') {
+      var params = new URLSearchParams();
+      params.set('category', currentCategory);
+      params.set('page', currentPage);
+      params.set('pageSize', '10');
+      fetch('api/superbid?' + params.toString())
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          if (reqId !== currentRequestId) return;
+          if (data.error) { document.getElementById('results-info').textContent = 'Erro: ' + data.error; return; }
+          var items = data.items || [];
+          var total = data.total || items.length;
+          totalPages = Math.ceil(total / 10);
+          document.getElementById('results-info').innerHTML = '<strong>' + total.toLocaleString('pt-BR') + '</strong> itens Superbid encontrados';
+          renderSuperbidCards(items);
+          renderPagination();
+        })
+        .catch(function(e){ if (reqId !== currentRequestId) return; document.getElementById('results-info').textContent = 'Erro: ' + e.message; });
+      return;
+    }
+
+    var params = new URLSearchParams();
+    params.set('page', currentPage);
+    params.set('results_per_page', perPage);
+    if (st) params.set('state', st);
+    if (br) params.set('bedrooms', br);
+    if (q) params.set('q', q);
+
+    fetch('api/orulo?' + params.toString())
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (reqId !== currentRequestId) return;
+        if (data.error) { document.getElementById('results-info').textContent = 'Erro: ' + data.error; return; }
+        var buildings = data.buildings || [];
+        var total = data.total || 0;
+        totalPages = data.total_pages || 1;
+        document.getElementById('results-info').innerHTML = '<strong>' + total.toLocaleString('pt-BR') + '</strong> empreendimentos encontrados';
+        renderCards(buildings);
+        renderPagination();
+      })
+      .catch(function(e){
+        if (reqId !== currentRequestId) return;
+        document.getElementById('results-info').textContent = 'Erro ao carregar: ' + e.message;
+      });
+  }
+
+  function renderCards(buildings){
+    var container = document.getElementById('cards-container');
+    if (!buildings.length){
+      container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:#888"><h3 style="margin-bottom:8px;color:#1a1a1a">Nenhum resultado</h3><p>Tente ajustar os filtros.</p></div>';
+      return;
+    }
+    var cols = window.innerWidth > 1100 ? 2 : 1;
+    container.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+    var html = '';
+    buildings.forEach(function(b){
+      var img = b.default_image ? (b.default_image['520x280'] || b.default_image['200x140'] || '') : '';
+      var address = formatAddress(b.address);
+      var specs = [];
+      if (b.min_bedrooms || b.max_bedrooms) {
+        var beds = b.min_bedrooms === b.max_bedrooms ? b.min_bedrooms : (b.min_bedrooms || '?') + ' a ' + (b.max_bedrooms || '?');
+        specs.push(beds + ' dorm.');
+      }
+      if (b.min_area || b.max_area) {
+        var area = b.min_area === b.max_area ? b.min_area : (b.min_area || '?') + ' a ' + (b.max_area || '?');
+        specs.push(area + ' m²');
+      }
+      if (b.stock) specs.push(b.stock + ' un.');
+      var portfolio = b.portfolio || [];
+      var badgeClass = 'badge';
+      var badgeText = b.status || '';
+      if (portfolio.indexOf('Lançamento') !== -1) { badgeClass = 'badge badge-launch'; badgeText = 'Lançamento'; }
+      else if (b.opportunity && (b.opportunity.featured_building || b.opportunity.tenanted_investment_property)) { badgeClass = 'badge badge-opportunity'; badgeText = 'Oportunidade'; }
+
+      var features = (b.features || []).slice(0, 4);
+
+      html += '<div class="card" onclick="window.location.href=\'detalhe.html?id=' + b.id + '\'">';
+      html += '<div class="card-img">';
+      if (img) html += '<img src="' + esc(img) + '" alt="' + esc(b.name) + '" loading="lazy">';
+      if (badgeText) html += '<div class="' + badgeClass + '">' + esc(badgeText) + '</div>';
+      html += '</div>';
+      html += '<div class="card-body">';
+      html += '<div class="card-name">' + esc(b.name) + '</div>';
+      html += '<div class="card-address">' + esc(address) + '</div>';
+      if (b.developer) html += '<div class="card-developer">' + esc(b.developer.name) + '</div>';
+      html += '<div class="card-divider"></div>';
+      html += '<div class="card-price"><div class="label">A partir de</div><div class="value">' + brl(b.min_price) + '</div></div>';
+      html += '<div class="card-specs">';
+      specs.forEach(function(s){ html += '<span class="spec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>' + s + '</span>'; });
+      html += '</div>';
+      if (features.length) {
+        html += '<div class="card-features">';
+        features.forEach(function(f){ html += '<span class="feat">' + esc(f) + '</span>'; });
+        html += '</div>';
+      }
+      html += '</div></div>';
+    });
+    container.innerHTML = html;
+  }
+
+  function renderCaixaCards(items){
+    var container = document.getElementById('cards-container');
+    if (!items.length){
+      container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:#888"><h3 style="margin-bottom:8px;color:#1a1a1a">Nenhum resultado</h3><p>Tente ajustar os filtros.</p></div>';
+      return;
+    }
+    var cols = window.innerWidth > 1100 ? 2 : 1;
+    container.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+    var html = '';
+    items.forEach(function(b){
+      var img = (b.images && b.images.length) ? b.images[0] : '';
+      var discount = b.discount ? b.discount + '% desc.' : '';
+      html += '<div class="card" onclick="window.location.href=\'detalhe.html?id=' + b.id + '\'">';
+      html += '<div class="card-img">';
+      if (img) html += '<img src="' + esc(img) + '" alt="' + esc(b.title) + '" loading="lazy">';
+      html += '<div class="badge" style="background:rgba(0,100,0,.85)">Caixa</div>';
+      if (discount) html += '<div class="badge" style="top:auto;bottom:8px;background:rgba(204,0,0,.9)">' + discount + '</div>';
+      html += '</div>';
+      html += '<div class="card-body">';
+      html += '<div class="card-name">' + esc(b.title) + '</div>';
+      html += '<div class="card-address">' + esc(b.address || b.location || '') + '</div>';
+      html += '<div class="card-developer">Caixa Econômica Federal</div>';
+      html += '<div class="card-divider"></div>';
+      html += '<div class="card-price"><div class="label">Valor do Imóvel</div><div class="value">' + brl(b.price) + '</div></div>';
+      if (b.initialBid) html += '<div style="font-size:12px;color:#888;margin-top:2px">Avaliado: ' + brl(b.initialBid) + '</div>';
+      html += '<div class="card-specs">';
+      if (b.bedrooms) html += '<span class="spec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V7l9-4 9 4v14"/></svg>' + b.bedrooms + ' quartos</span>';
+      if (b.usefulArea) html += '<span class="spec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>' + b.usefulArea + ' m²</span>';
+      html += '</div>';
+      if (b.auctionDate) html += '<div style="font-size:11px;color:#b33;margin-top:4px">Encerra: ' + esc(b.auctionDate) + '</div>';
+      html += '</div></div>';
+    });
+    container.innerHTML = html;
+  }
+
+  function renderSuperbidCards(items){
+    var container = document.getElementById('cards-container');
+    if (!items.length){
+      container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:#888"><h3 style="margin-bottom:8px;color:#1a1a1a">Nenhum resultado</h3><p>Tente ajustar os filtros.</p></div>';
+      return;
+    }
+    var cols = window.innerWidth > 1100 ? 2 : 1;
+    container.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+    var html = '';
+    items.forEach(function(b){
+      html += '<div class="card" onclick="window.location.href=\'detalhe.html?id=' + esc(b.id) + '\'">';
+      html += '<div class="card-img">';
+      if (b.thumbnail) {
+        html += '<img src="' + esc(b.thumbnail) + '" alt="" loading="lazy">';
+      } else {
+        html += '<div style="width:100%;height:100%;background:linear-gradient(135deg,#4a0080,#7b2fbe);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;text-align:center;padding:8px">Superbid</div>';
+      }
+      html += '<div class="badge" style="background:rgba(75,0,130,.85)">Superbid</div>';
+      if (b.sold) html += '<div class="badge" style="top:auto;bottom:8px;background:rgba(180,0,0,.9)">Vendido</div>';
+      else if (b.reserved) html += '<div class="badge" style="top:auto;bottom:8px;background:rgba(200,150,0,.9)">Reservado</div>';
+      html += '</div>';
+      html += '<div class="card-body">';
+      html += '<div class="card-name">' + esc(b.title || 'Lote ' + b.lotNumber) + '</div>';
+      html += '<div class="card-developer">' + esc(b.store || b.auctioneer || 'Superbid') + '</div>';
+      html += '<div class="card-divider"></div>';
+      html += '<div class="card-price"><div class="label">Lance</div><div class="value">' + brl(b.price) + '</div></div>';
+      if (b.cutValue && b.cutValue !== b.price) html += '<div style="font-size:12px;color:#888;margin-top:2px">Corte: ' + brl(b.cutValue) + '</div>';
+      html += '<div class="card-specs">';
+      if (b.photoCount) html += '<span class="spec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>' + b.photoCount + ' fotos</span>';
+      if (b.endDate) html += '<span class="spec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>' + esc(b.endDate.split(' ')[0]) + '</span>';
+      html += '</div></div></div>';
+    });
+    container.innerHTML = html;
+  }
+
+  function renderPagination(){
+    var el = document.getElementById('pagination');
+    if (totalPages <= 1) { el.innerHTML = ''; return; }
+    var html = '';
+    html += '<button ' + (currentPage <= 1 ? 'disabled' : '') + ' onclick="goPage(' + (currentPage - 1) + ')">&lsaquo; Ant.</button>';
+    var start = Math.max(1, currentPage - 2);
+    var end = Math.min(totalPages, currentPage + 2);
+    if (start > 1) html += '<button onclick="goPage(1)">1</button>';
+    if (start > 2) html += '<span class="page-info">...</span>';
+    for (var i = start; i <= end; i++){
+      html += '<button class="' + (i === currentPage ? 'active' : '') + '" onclick="goPage(' + i + ')">' + i + '</button>';
+    }
+    if (end < totalPages - 1) html += '<span class="page-info">...</span>';
+    if (end < totalPages) html += '<button onclick="goPage(' + totalPages + ')">' + totalPages + '</button>';
+    html += '<button ' + (currentPage >= totalPages ? 'disabled' : '') + ' onclick="goPage(' + (currentPage + 1) + ')">Pr&oacute;x. &rsaquo;</button>';
+    el.innerHTML = html;
+  }
+
+  window.goPage = function(p){
+    currentPage = p;
+    document.getElementById('scroll-content').scrollTop = 0;
+    showSkeletons();
+    loadBuildings();
+    if (currentSource === 'orulo') loadMapMarkers();
+  };
+
+  function showSkeletons(){
+    var c = document.getElementById('cards-container');
+    var cols = window.innerWidth > 1100 ? 2 : 1;
+    c.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+    var html = '';
+    for (var i = 0; i < 6; i++){
+      html += '<div class="skeleton-card"><div class="skeleton-img"></div><div class="skeleton-body">';
+      html += '<div class="skeleton-line w75"></div><div class="skeleton-line w50"></div><div class="skeleton-line w33"></div>';
+      html += '<div style="height:8px"></div>';
+      html += '<div class="skeleton-line w50"></div><div class="skeleton-line w75"></div>';
+      html += '</div></div>';
+    }
+    c.innerHTML = html;
+  }
+
+  function formatAddress(a){
+    if (!a) return '';
+    var parts = [];
+    if (a.street) parts.push(a.street + (a.number ? ', ' + a.number : ''));
+    if (a.area) parts.push(a.area);
+    if (a.city) parts.push(a.city);
+    if (a.state) parts.push(a.state);
+    return parts.join(' — ');
+  }
+  function brl(v){ return v ? 'R$ ' + Number(v).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:0}) : 'Consulte'; }
+  function esc(s){ var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+})();
+</script>
+</body>
+</html>
