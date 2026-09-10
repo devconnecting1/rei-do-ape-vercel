@@ -6,18 +6,20 @@ function rei_do_ape_api_orulo($request) {
     $page = intval($params['page'] ?? 1);
     $per_page = intval($params['results_per_page'] ?? 10);
 
-    $url = 'https://www.orulo.com.br/api/portal/v2/buildings?' . http_build_query([
+    $query = [
         'page' => $page,
         'results_per_page' => $per_page,
-        'state' => $params['state'] ?? '',
-        'city' => $params['city'] ?? '',
-        'min_price' => $params['min_price'] ?? '',
-        'max_price' => $params['max_price'] ?? '',
-        'min_private_area' => $params['min_area'] ?? '',
-        'max_private_area' => $params['max_area'] ?? '',
-        'bedrooms[]' => $params['bedrooms'] ?? '',
-        'name' => $params['q'] ?? '',
-    ]);
+    ];
+    if (!empty($params['state'])) $query['state'] = $params['state'];
+    if (!empty($params['city'])) $query['city'] = $params['city'];
+    if (!empty($params['min_price'])) $query['min_price'] = $params['min_price'];
+    if (!empty($params['max_price'])) $query['max_price'] = $params['max_price'];
+    if (!empty($params['min_area'])) $query['min_private_area'] = $params['min_area'];
+    if (!empty($params['max_area'])) $query['max_private_area'] = $params['max_area'];
+    if (!empty($params['bedrooms'])) $query['bedrooms[]'] = $params['bedrooms'];
+    if (!empty($params['q'])) $query['name'] = $params['q'];
+
+    $url = 'https://www.orulo.com.br/api/portal/v2/buildings?' . http_build_query($query);
 
     $response = wp_remote_get($url, [
         'headers' => [
@@ -47,12 +49,14 @@ function rei_do_ape_api_orulo($request) {
 function rei_do_ape_api_orulo_map($request) {
     $params = $request->get_params();
 
-    $url = 'https://www.orulo.com.br/api/portal/v2/buildings?' . http_build_query([
+    $query = [
         'total_pages' => $params['total_pages'] ?? 10,
-        'state' => $params['state'] ?? '',
-        'bedrooms[]' => $params['bedrooms'] ?? '',
-        'name' => $params['q'] ?? '',
-    ]);
+    ];
+    if (!empty($params['state'])) $query['state'] = $params['state'];
+    if (!empty($params['bedrooms'])) $query['bedrooms[]'] = $params['bedrooms'];
+    if (!empty($params['q'])) $query['name'] = $params['q'];
+
+    $url = 'https://www.orulo.com.br/api/portal/v2/buildings?' . http_build_query($query);
 
     $response = wp_remote_get($url, [
         'headers' => [
@@ -72,12 +76,14 @@ function rei_do_ape_api_orulo_map($request) {
     $markers = [];
     if (!empty($data['buildings'])) {
         foreach ($data['buildings'] as $b) {
-            if (!empty($b['address']['lat']) && !empty($b['address']['lng'])) {
+            $lat = $b['address']['latitude'] ?? ($b['address']['lat'] ?? null);
+            $lng = $b['address']['longitude'] ?? ($b['address']['lng'] ?? null);
+            if (!empty($lat) && !empty($lng)) {
                 $markers[] = [
                     'id' => $b['id'],
                     'name' => $b['name'] ?? '',
-                    'lat' => floatval($b['address']['lat']),
-                    'lng' => floatval($b['address']['lng']),
+                    'lat' => floatval($lat),
+                    'lng' => floatval($lng),
                     'price' => $b['min_price'] ?? 0,
                 ];
             }
