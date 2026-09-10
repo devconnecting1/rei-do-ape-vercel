@@ -105,14 +105,7 @@ function rei_do_ape_api_superbid($request) {
     ]);
 }
 
-function rei_do_ape_api_superbid_detail($request) {
-    $id = sanitize_text_field($request->get_param('id'));
-    if (!$id) {
-        return new WP_REST_Response(['error' => 'id required'], 400);
-    }
-
-    $url = "https://exchange.superbid.net/oferta/{$id}";
-
+function rei_do_ape_fetch_superbid_page($url) {
     $response = wp_remote_get($url, [
         'headers' => [
             'Accept' => 'text/html,application/xhtml+xml',
@@ -122,25 +115,120 @@ function rei_do_ape_api_superbid_detail($request) {
     ]);
 
     if (is_wp_error($response)) {
-        return new WP_REST_Response(['error' => $response->get_error_message()], 500);
+        return [null, $response->get_error_message()];
     }
 
     $code = wp_remote_retrieve_response_code($response);
     if ($code !== 200) {
-        return new WP_REST_Response(['error' => 'Not found'], $code);
+        return [null, 'HTTP ' . $code];
     }
 
     $html = wp_remote_retrieve_body($response);
 
     if (!preg_match('/<script id="__NEXT_DATA__"[^>]*>(.*?)<\/script>/s', $html, $match)) {
-        return new WP_REST_Response(['error' => 'Could not parse page'], 502);
+        return [null, 'Could not parse page'];
     }
 
     $next_data = json_decode($match[1], true);
+    if (!is_array($next_data)) {
+        return [null, 'Invalid page data'];
+    }
+
+    return [$next_data, null];
+}
+
+function rei_do_ape_superbid_detail_from_search($o) {
+    $product = $o['product'] ?? [];
+    $detail = $o['offerDetail'] ?? [];
+    $photos = array_map(function($g) { return is_array($g) ? ($g['link'] ?? '') : ''; }, $product['galleryJson'] ?? []);
+    $photos = array_values(array_filter($photos));
+    $desc = $product['detailedDescription'] ?? '';
+    if (!is_string($desc)) $desc = '';
+    $loc = $product['location'] ?? [];
+    $city = '';
+    $state = '';
+    if (!empty($loc['city']) && is_string($loc['city'])) {
+        $parts = explode('-', $loc['city']);
+        $city = trim($parts[0]);
+        if (isset($parts[1])) $state = trim($parts[1]);
+    }
+    if (!$state && !empty($loc['state']) && is_string($loc['state'])) $state = $loc['state'];
+
+    $result = [
+        'id' => 'sb-' . $o['id'],
+        'lotNumber' => $o['lotNumber'] ?? '',
+        'title' => $product['shortDesc'] ?? '',
+        'description' => $desc,
+        'price' => $o['price'] ?? 0,
+        'priceFormatted' => $o['priceFormatted'] ?? '',
+        'directSaleValue' => $detail['directSaleValue'] ?? null,
+        'referenceValue' => $detail['referenceValue'] ?? null,
+        'reservedPrice' => $detail['reservedPrice'] ?? null,
+        'photos' => $photos,
+        'category' => (is_array($product['category'] ?? null) ? ($product['category']['description'] ?? '') : ($product['category'] ?? '')),
+        'subcategory' => (is_array($product['subCategory'] ?? null) ? ($product['subCategory']['description'] ?? '') : ($product['subCategory'] ?? '')),
+        'url' => 'https://exchange.superbid.net/oferta/' . rei_do_ape_make_slug($product['shortDesc'] ?? '') . '-' . $o['id'],
+        'location' => ['city' => $city, 'state' => $state],
+        'auction' => $o['auction'] ?? [],
+        'properties' => [],
+        'seller' => $o['seller'] ?? [],
+        'status' => $o['offerStatus'] ?? [],
+        'templateGroups' => [],
+        'attachments' => [],
+        'bids' => [
+            'totalBids' => $o['totalBids'] ?? 0,
+            'totalBidders' => $o['totalBidders'] ?? 0,
+        ],
+        'visits' => $o['visits'] ?? 0,
+        'commercialCondition' => $o['commercialCondition'] ?? null,
+        'groupOffer' => $o['groupOffer'] ?? null,
+        'manager' => (is_array($o['manager'] ?? null) ? '' : ($o['manager'] ?? '')),
+        'stores' => $o['stores'] ?? [],
+    ];
+
+    return new WP_REST_Response($result, 200, [
+        'Cache-Control' => 's-maxage=300, stale-while-revalidate',
+    ]);
+}
+
+function rei_do_ape_api_superbid_detail($request) {
+    $id = sanitize_text_field($request->get_param('id'));
+    if (!$id) {
+        return new WP_REST_Response(['error' => 'id required'], 400);
+    }
+
+    list($next_data, $err) = rei_do_ape_fetch_superbid_page("https://exchange.superbid.net/oferta/{$id}");
+    if ($err) {
+        return new WP_REST_Response(['error' => $err], 502);
+    }
+
     $offer = $next_data['props']['pageProps']['offer'] ?? null;
+    $from_search = false;
+
+    if (!$offer) {
+        $candidates = $next_data['props']['pageProps']['offerDetails']['offers'] ?? [];
+        $found = null;
+        foreach ($candidates as $c) {
+            if (strval($c['id'] ?? '') === strval($id)) {
+                $found = $c;
+                break;
+            }
+        }
+        if (!$found && !empty($candidates)) {
+            $found = $candidates[0];
+        }
+        if ($found) {
+            $offer = $found;
+            $from_search = true;
+        }
+    }
 
     if (!$offer) {
         return new WP_REST_Response(['error' => 'Offer not found'], 404);
+    }
+
+    if ($from_search) {
+        return rei_do_ape_superbid_detail_from_search($offer);
     }
 
     $product = $offer['product'] ?? [];
