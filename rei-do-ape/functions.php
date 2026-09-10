@@ -29,6 +29,7 @@ function rei_do_ape_scripts() {
         wp_enqueue_script('rei-do-ape-detalhe', get_template_directory_uri() . '/js/detalhe.js', [], REI_DO_APE_VERSION, true);
     }
 }
+}
 add_action('wp_enqueue_scripts', 'rei_do_ape_scripts');
 
 if (!function_exists('rei_do_ape_register_apis')) {
