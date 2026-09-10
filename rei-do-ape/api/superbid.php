@@ -64,7 +64,7 @@ function rei_do_ape_api_superbid($request) {
     foreach ($offers as $o) {
         $desc = $o['product']['shortDesc'] ?? '';
         $thumb = $o['product']['thumbnailUrl'] ?? ($o['product']['galleryJson'][0]['link'] ?? '');
-        $photos = array_map(fn($g) => $g['link'] ?? '', $o['product']['galleryJson'] ?? []);
+        $photos = array_map(function($g) { return $g['link'] ?? ''; }, $o['product']['galleryJson'] ?? []);
         $store_name = $o['store']['name'] ?? '';
         $auctioneer = $o['auction']['auctioneer'] ?? '';
 
@@ -149,7 +149,7 @@ function rei_do_ape_api_superbid_detail($request) {
     $props = $offer['properties'] ?? [];
     $seller = $offer['seller'] ?? [];
     $status = $offer['offerStatus'] ?? [];
-    $photos = array_map(fn($g) => $g['link'] ?? '', $product['galleryJson'] ?? []);
+    $photos = array_map(function($g) { return $g['link'] ?? ''; }, $product['galleryJson'] ?? []);
 
     $result = [
         'id' => 'sb-' . $offer['id'],
