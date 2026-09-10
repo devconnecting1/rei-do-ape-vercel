@@ -3,14 +3,17 @@ if (!defined('ABSPATH')) exit;
 
 define('REI_DO_APE_VERSION', '1.0.0');
 
+if (!function_exists('rei_do_ape_setup')) {
 function rei_do_ape_setup() {
     add_theme_support('title-tag');
     add_theme_support('custom-logo');
     add_theme_support('html5', ['search-form', 'comment-form', 'comment-list', 'gallery', 'caption']);
     register_nav_menus(['primary' => 'Menu Principal']);
 }
+}
 add_action('after_setup_theme', 'rei_do_ape_setup');
 
+if (!function_exists('rei_do_ape_scripts')) {
 function rei_do_ape_scripts() {
     wp_enqueue_style('rei-do-ape-fonts', 'https://cdn.jsdelivr.net/npm/geist@latest/dist/fonts/geist-sans/style.css', [], REI_DO_APE_VERSION);
     wp_enqueue_style('rei-do-ape-style', get_stylesheet_uri(), ['rei-do-ape-fonts'], REI_DO_APE_VERSION);
@@ -28,7 +31,9 @@ function rei_do_ape_scripts() {
 }
 add_action('wp_enqueue_scripts', 'rei_do_ape_scripts');
 
+if (!function_exists('rei_do_ape_register_apis')) {
 function rei_do_ape_register_apis() {
+    if (!function_exists('register_rest_route')) return;
     register_rest_route('rei-do-ape/v1', '/orulo', [
         'methods' => 'GET',
         'callback' => 'rei_do_ape_api_orulo',
@@ -59,7 +64,10 @@ function rei_do_ape_register_apis() {
         'permission_callback' => '__return_true',
     ]);
 }
+}
 add_action('rest_api_init', 'rei_do_ape_register_apis');
 
-require get_template_directory() . '/api/orulo.php';
-require get_template_directory() . '/api/superbid.php';
+$rei_orulo_api = get_template_directory() . '/api/orulo.php';
+if (file_exists($rei_orulo_api)) require_once $rei_orulo_api;
+$rei_superbid_api = get_template_directory() . '/api/superbid.php';
+if (file_exists($rei_superbid_api)) require_once $rei_superbid_api;
