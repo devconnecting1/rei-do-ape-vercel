@@ -1,3 +1,6 @@
+const http = require("http");
+const https = require("https");
+
 const CAIXA_HEADERS = {
 	"Content-Type": "application/x-www-form-urlencoded",
 	"User-Agent":
@@ -35,81 +38,258 @@ const STATE_MAP = {
 	RORAIMA: "RR",
 };
 
-async function caixaGetSession() {
+let _cachedProxy = null;
+let _proxyTestTime = 0;
+const PROXY_CACHE_TTL = 4 * 60 * 1000;
+
+async function fetchProxies() {
 	const https = require("https");
 	return new Promise((resolve, reject) => {
 		const req = https.request(
 			{
-				hostname: "venda-imoveis.caixa.gov.br",
-				path: "/sistema/busca-imovel.asp",
+				hostname: "hproxy.com",
+				path: "/api/proxy-list?format=txt&country=br",
 				method: "GET",
 				headers: {
-					"User-Agent": CAIXA_HEADERS["User-Agent"],
-					Accept:
-						"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-					"Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+					"User-Agent":
+						"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
 				},
-				timeout: 15000,
+				timeout: 10000,
 			},
 			(res) => {
 				let data = "";
 				res.on("data", (c) => (data += c));
 				res.on("end", () => {
-					const cookies = (res.headers["set-cookie"] || [])
-						.map((c) => c.split(";")[0])
-						.join("; ");
-					resolve({
-						status: res.statusCode,
-						body: data,
-						cookies,
-						allHeaders: res.headers,
-					});
+					const lines = data
+						.split("\n")
+						.map((l) => l.trim())
+						.filter((l) => l && l.includes(":"));
+					const proxies = lines.map((l) => "http://" + l);
+					resolve(proxies);
 				});
 			},
 		);
 		req.on("error", reject);
 		req.on("timeout", () => {
 			req.destroy();
-			reject(new Error("session timeout"));
+			reject(new Error("proxy fetch timeout"));
 		});
 		req.end();
 	});
 }
 
-async function caixaPost(url, body, cookies = "") {
-	const https = require("https");
+function tunnelFetch(proxyUrl, targetUrl, options = {}) {
 	return new Promise((resolve, reject) => {
-		const parsed = new URL(url);
-		const headers = {
-			"Content-Type": "application/x-www-form-urlencoded",
-			"User-Agent": CAIXA_HEADERS["User-Agent"],
-			Accept:
-				"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-			"Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-			Origin: "https://venda-imoveis.caixa.gov.br",
-			Referer: "https://venda-imoveis.caixa.gov.br/sistema/busca-imovel.asp",
-		};
-		if (cookies) headers["Cookie"] = cookies;
-		const req = https.request(
-			{
-				hostname: parsed.hostname,
-				path: parsed.pathname + parsed.search,
-				method: "POST",
-				headers,
-				timeout: 15000,
-			},
-			(res) => {
-				let data = "";
-				res.on("data", (c) => (data += c));
-				res.on("end", () => resolve({ status: res.statusCode, body: data }));
-			},
+		const proxy = new URL(proxyUrl);
+		const target = new URL(targetUrl);
+		const timeout = setTimeout(
+			() => reject(new Error("proxy timeout")),
+			options.timeout || 15000,
 		);
-		req.on("error", reject);
-		req.on("timeout", () => {
-			req.destroy();
-			reject(new Error("request timeout"));
+
+		const req = http.request({
+			host: proxy.hostname,
+			port: proxy.port,
+			method: "CONNECT",
+			path: `${target.hostname}:443`,
 		});
-		if (body) req.write(body);
+
+		req.on("connect", (res, socket) => {
+			if (res.statusCode !== 200) {
+				clearTimeout(timeout);
+				return reject(new Error(`CONNECT ${res.statusCode}`));
+			}
+			const agent = new https.Agent({ socket, rejectUnauthorized: false });
+			const fetchReq = https.request(
+				targetUrl,
+				{ ...options, agent },
+				(res2) => {
+					let data = "";
+					res2.on("data", (c) => (data += c));
+					res2.on("end", () => {
+						clearTimeout(timeout);
+						resolve({ status: res2.statusCode, body: data });
+					});
+				},
+			);
+			fetchReq.on("error", (e) => {
+				clearTimeout(timeout);
+				reject(e);
+			});
+			if (options.body) fetchReq.write(options.body);
+			fetchReq.end();
+		});
+
+		req.on("error", (e) => {
+			clearTimeout(timeout);
+			reject(e);
+		});
+		req.end();
+	});
+}
+
+async function findProxy() {
+	const now = Date.now();
+	if (_cachedProxy && now - _proxyTestTime < PROXY_CACHE_TTL) {
+		return _cachedProxy;
+	}
+
+	let proxies;
+	try {
+		proxies = await fetchProxies();
+	} catch {
+		return null;
+	}
+	if (!proxies.length) return null;
+
+	const testBody =
+		"hdn_estado=SP&hdn_cidade=&hdn_bairro=&hdn_area_util=Selecione&hdn_faixa_vlr=Selecione&hdn_quartos=Selecione&hdn_tp_imovel=Selecione&hdn_vg_garagem=Selecione";
+
+	for (const proxy of proxies.slice(0, 15)) {
+		try {
+			const r = await tunnelFetch(
+				proxy,
+				"https://venda-imoveis.caixa.gov.br/sistema/carregaPesquisaImoveis.asp",
+				{
+					method: "POST",
+					headers: CAIXA_HEADERS,
+					body: testBody,
+					timeout: 10000,
+				},
+			);
+			if (r.status === 200 && r.body.includes("hdnQtdPag")) {
+				_cachedProxy = proxy;
+				_proxyTestTime = now;
+				return proxy;
+			}
+		} catch {
+			/* skip */
+		}
+	}
+	return null;
+}
+
+async function caixaGetSession(proxy) {
+	return new Promise((resolve, reject) => {
+		const timeout = setTimeout(
+			() => reject(new Error("session timeout")),
+			15000,
+		);
+		const proxyUrl = new URL(proxy);
+		const target = "https://venda-imoveis.caixa.gov.br/sistema/busca-imovel.asp";
+		const targetUrl = new URL(target);
+
+		const req = http.request({
+			host: proxyUrl.hostname,
+			port: proxyUrl.port,
+			method: "CONNECT",
+			path: `${targetUrl.hostname}:443`,
+		});
+
+		req.on("connect", (res, socket) => {
+			if (res.statusCode !== 200) {
+				clearTimeout(timeout);
+				return reject(new Error(`CONNECT ${res.statusCode}`));
+			}
+			const agent = new https.Agent({ socket, rejectUnauthorized: false });
+			const fetchReq = https.request(
+				target,
+				{
+					method: "GET",
+					headers: {
+						"User-Agent": CAIXA_HEADERS["User-Agent"],
+						Accept:
+							"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+						"Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+					},
+					agent,
+				},
+				(res2) => {
+					let data = "";
+					res2.on("data", (c) => (data += c));
+					res2.on("end", () => {
+						clearTimeout(timeout);
+						const cookies = (res2.headers["set-cookie"] || [])
+							.map((c) => c.split(";")[0])
+							.join("; ");
+						resolve({ status: res2.statusCode, body: data, cookies });
+					});
+				},
+			);
+			fetchReq.on("error", (e) => {
+				clearTimeout(timeout);
+				reject(e);
+			});
+			fetchReq.end();
+		});
+
+		req.on("error", (e) => {
+			clearTimeout(timeout);
+			reject(e);
+		});
+		req.end();
+	});
+}
+
+async function caixaPost(proxy, url, body, cookies = "") {
+	const proxyUrl = new URL(proxy);
+	const targetUrl = new URL(url);
+
+	return new Promise((resolve, reject) => {
+		const timeout = setTimeout(
+			() => reject(new Error("request timeout")),
+			15000,
+		);
+
+		const req = http.request({
+			host: proxyUrl.hostname,
+			port: proxyUrl.port,
+			method: "CONNECT",
+			path: `${targetUrl.hostname}:443`,
+		});
+
+		req.on("connect", (res, socket) => {
+			if (res.statusCode !== 200) {
+				clearTimeout(timeout);
+				return reject(new Error(`CONNECT ${res.statusCode}`));
+			}
+			const agent = new https.Agent({ socket, rejectUnauthorized: false });
+			const headers = {
+				"Content-Type": "application/x-www-form-urlencoded",
+				"User-Agent": CAIXA_HEADERS["User-Agent"],
+				Accept:
+					"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+				"Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+				Origin: "https://venda-imoveis.caixa.gov.br",
+				Referer:
+					"https://venda-imoveis.caixa.gov.br/sistema/busca-imovel.asp",
+			};
+			if (cookies) headers["Cookie"] = cookies;
+
+			const fetchReq = https.request(
+				url,
+				{ method: "POST", headers, agent },
+				(res2) => {
+					let data = "";
+					res2.on("data", (c) => (data += c));
+					res2.on("end", () => {
+						clearTimeout(timeout);
+						resolve({ status: res2.statusCode, body: data });
+					});
+				},
+			);
+			fetchReq.on("error", (e) => {
+				clearTimeout(timeout);
+				reject(e);
+			});
+			if (body) fetchReq.write(body);
+			fetchReq.end();
+		});
+
+		req.on("error", (e) => {
+			clearTimeout(timeout);
+			reject(e);
+		});
 		req.end();
 	});
 }
@@ -143,10 +323,18 @@ async function searchCaixaIds(state) {
 		hdn_tp_venda: "",
 	}).toString();
 
-	const session = await caixaGetSession();
-	console.log("[caixa] session status:", session.status, "cookies:", session.cookies ? "present" : "none");
+	const proxy = await findProxy();
+	if (!proxy) {
+		console.error("[caixa] no working proxy found");
+		return null;
+	}
+	console.log("[caixa] using proxy:", proxy);
+
+	const session = await caixaGetSession(proxy);
+	console.log("[caixa] session status:", session.status);
 
 	const r = await caixaPost(
+		proxy,
 		"https://venda-imoveis.caixa.gov.br/sistema/carregaPesquisaImoveis.asp",
 		searchBody,
 		session.cookies,
@@ -154,7 +342,7 @@ async function searchCaixaIds(state) {
 
 	console.log("[caixa] search status:", r.status, "body length:", r.body.length);
 	if (r.status !== 200) {
-		console.error("[caixa] search failed:", r.body.substring(0, 500));
+		console.error("[caixa] search failed:", r.body.substring(0, 300));
 		return null;
 	}
 
@@ -423,6 +611,7 @@ function handleOptions(req, res) {
 module.exports = {
 	CAIXA_HEADERS,
 	STATE_MAP,
+	findProxy,
 	caixaGetSession,
 	caixaPost,
 	searchCaixaIds,

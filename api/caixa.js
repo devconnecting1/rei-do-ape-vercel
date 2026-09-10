@@ -1,5 +1,6 @@
 const {
 	searchCaixaIds,
+	findProxy,
 	caixaGetSession,
 	caixaPost,
 	parseCaixaDetail,
@@ -41,14 +42,23 @@ module.exports = async (req, res) => {
 		const detailUrl =
 			"https://venda-imoveis.caixa.gov.br/sistema/detalhe-imovel.asp";
 
-		const session = await caixaGetSession();
+		const proxy = await findProxy();
+		if (!proxy) {
+			return res
+				.status(503)
+				.json({ error: "Nenhum proxy disponível" });
+		}
+
+		const session = await caixaGetSession(proxy);
 
 		const detailResults = await Promise.allSettled(
 			pageIds.map((id) =>
-				caixaPost(detailUrl, "hdnimovel=" + id, session.cookies).then((r) => {
-					if (r && r.status === 200) return { html: r.body, id };
-					return null;
-				}),
+				caixaPost(proxy, detailUrl, "hdnimovel=" + id, session.cookies).then(
+					(r) => {
+						if (r && r.status === 200) return { html: r.body, id };
+						return null;
+					},
+				),
 			),
 		);
 
