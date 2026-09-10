@@ -35,16 +35,52 @@ const STATE_MAP = {
 	RORAIMA: "RR",
 };
 
-async function caixaPost(url, body) {
+async function caixaGetSession() {
+	const https = require("https");
+	return new Promise((resolve, reject) => {
+		const req = https.request(
+			{
+				hostname: "venda-imoveis.caixa.gov.br",
+				path: "/sistema/busca-imovel.asp",
+				method: "GET",
+				headers: {
+					"User-Agent": CAIXA_HEADERS["User-Agent"],
+					Accept: "text/html,application/xhtml+xml",
+				},
+				timeout: 15000,
+			},
+			(res) => {
+				let data = "";
+				res.on("data", (c) => (data += c));
+				res.on("end", () => {
+					const cookies = (res.headers["set-cookie"] || [])
+						.map((c) => c.split(";")[0])
+						.join("; ");
+					resolve({ status: res.statusCode, body: data, cookies });
+				});
+			},
+		);
+		req.on("error", reject);
+		req.on("timeout", () => {
+			req.destroy();
+			reject(new Error("session timeout"));
+		});
+		req.end();
+	});
+}
+
+async function caixaPost(url, body, cookies = "") {
 	const https = require("https");
 	return new Promise((resolve, reject) => {
 		const parsed = new URL(url);
+		const headers = { ...CAIXA_HEADERS };
+		if (cookies) headers["Cookie"] = cookies;
 		const req = https.request(
 			{
 				hostname: parsed.hostname,
 				path: parsed.pathname,
 				method: "POST",
-				headers: CAIXA_HEADERS,
+				headers,
 				timeout: 15000,
 			},
 			(res) => {
@@ -92,9 +128,11 @@ async function searchCaixaIds(state) {
 		hdn_tp_venda: "",
 	}).toString();
 
+	const session = await caixaGetSession();
 	const r = await caixaPost(
 		"https://venda-imoveis.caixa.gov.br/sistema/carregaPesquisaImoveis.asp",
 		searchBody,
+		session.cookies,
 	);
 
 	if (r.status !== 200) return null;
@@ -364,6 +402,7 @@ function handleOptions(req, res) {
 module.exports = {
 	CAIXA_HEADERS,
 	STATE_MAP,
+	caixaGetSession,
 	caixaPost,
 	searchCaixaIds,
 	clean,

@@ -1,5 +1,6 @@
 const {
 	searchCaixaIds,
+	caixaGetSession,
 	caixaPost,
 	parseCaixaDetail,
 	setCorsHeaders,
@@ -39,9 +40,11 @@ module.exports = async (req, res) => {
 		const detailUrl =
 			"https://venda-imoveis.caixa.gov.br/sistema/detalhe-imovel.asp";
 
+		const session = await caixaGetSession();
+
 		const detailResults = await Promise.allSettled(
 			pageIds.map((id) =>
-				caixaPost(detailUrl, "hdnimovel=" + id).then((r) => {
+				caixaPost(detailUrl, "hdnimovel=" + id, session.cookies).then((r) => {
 					if (r && r.status === 200) return { html: r.body, id };
 					return null;
 				}),

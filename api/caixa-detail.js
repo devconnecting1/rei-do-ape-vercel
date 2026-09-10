@@ -1,4 +1,5 @@
 const {
+	caixaGetSession,
 	caixaPost,
 	parseCaixaDetail,
 	setCorsHeaders,
@@ -17,7 +18,9 @@ module.exports = async (req, res) => {
 	try {
 		const url =
 			"https://venda-imoveis.caixa.gov.br/sistema/detalhe-imovel.asp";
-		const r = await caixaPost(url, "hdnimovel=" + rawId);
+
+		const session = await caixaGetSession();
+		const r = await caixaPost(url, "hdnimovel=" + rawId, session.cookies);
 
 		if (!r || r.status !== 200 || r.body.length < 100) {
 			return res
