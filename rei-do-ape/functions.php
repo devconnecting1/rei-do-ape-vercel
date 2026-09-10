@@ -16,6 +16,7 @@ add_action('after_setup_theme', 'rei_do_ape_setup');
 if (!function_exists('rei_do_ape_scripts')) {
 function rei_do_ape_scripts() {
     wp_enqueue_style('rei-do-ape-fonts', 'https://cdn.jsdelivr.net/npm/geist@latest/dist/fonts/geist-sans/style.css', [], REI_DO_APE_VERSION);
+    wp_enqueue_style('rei-do-ape-fonts-mono', 'https://cdn.jsdelivr.net/npm/geist@latest/dist/fonts/geist-mono/style.css', [], REI_DO_APE_VERSION);
     wp_enqueue_style('rei-do-ape-style', get_stylesheet_uri(), ['rei-do-ape-fonts'], REI_DO_APE_VERSION);
     wp_enqueue_style('rei-do-ape-theme', get_template_directory_uri() . '/css/theme.css', ['rei-do-ape-style'], REI_DO_APE_VERSION);
 
